@@ -10,34 +10,94 @@ function authenticateGitHub() {
     return new Promise((resolve, reject) => {
         const clientId = 'Iv23liAQIEL6RRJ2PuK0';
         
-        // Step 1: Request device and user codes using XMLHttpRequest for Firefox compatibility
-        const xhr = new XMLHttpRequest();
-        xhr.open('POST', 'https://github.com/login/device/code', true);
-        xhr.setRequestHeader('Accept', 'application/json');
-        xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
-        
-        xhr.onload = function() {
-            if (xhr.status === 200) {
-                try {
-                    const data = JSON.parse(xhr.responseText);
-                    handleDeviceCodeResponse(data, clientId, resolve, reject);
-                } catch (e) {
-                    reject(new Error('Failed to parse response: ' + e.message));
+        // For Firefox, we'll use a temporary tab to bypass CORS
+        browser.tabs.create({
+            url: 'data:text/html,<html><body><script>console.log("OAuth helper page loaded")</script></body></html>',
+            active: false
+        }).then((tab) => {
+            console.log('Created helper tab:', tab.id);
+            
+            // Inject script to perform OAuth request
+            const code = `
+                (function() {
+                    const xhr = new XMLHttpRequest();
+                    xhr.open('POST', 'https://github.com/login/device/code', true);
+                    xhr.setRequestHeader('Accept', 'application/json');
+                    xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+                    
+                    xhr.onload = function() {
+                        if (xhr.status === 200) {
+                            try {
+                                const data = JSON.parse(xhr.responseText);
+                                browser.runtime.sendMessage({
+                                    action: 'deviceCodeResponse',
+                                    data: data
+                                });
+                            } catch (e) {
+                                browser.runtime.sendMessage({
+                                    action: 'deviceCodeError',
+                                    error: 'Failed to parse response: ' + e.message
+                                });
+                            }
+                        } else {
+                            browser.runtime.sendMessage({
+                                action: 'deviceCodeError',
+                                error: 'Request failed with status: ' + xhr.status
+                            });
+                        }
+                    };
+                    
+                    xhr.onerror = function() {
+                        browser.runtime.sendMessage({
+                            action: 'deviceCodeError',
+                            error: 'Network error occurred'
+                        });
+                    };
+                    
+                    const params = new URLSearchParams({
+                        client_id: '${clientId}',
+                        scope: 'repo user:email'
+                    });
+                    xhr.send(params.toString());
+                })();
+            `;
+            
+            // Store the resolve/reject for this auth attempt
+            browser.storage.local.set({
+                github_auth_resolve: true,
+                github_auth_tab_id: tab.id
+            });
+            
+            // Set up temporary listener for response
+            const messageListener = (request, sender, sendResponse) => {
+                if (request.action === 'deviceCodeResponse') {
+                    browser.runtime.onMessage.removeListener(messageListener);
+                    browser.tabs.remove(tab.id);
+                    browser.storage.local.remove(['github_auth_resolve', 'github_auth_tab_id']);
+                    handleDeviceCodeResponse(request.data, clientId, resolve, reject);
+                } else if (request.action === 'deviceCodeError') {
+                    browser.runtime.onMessage.removeListener(messageListener);
+                    browser.tabs.remove(tab.id);
+                    browser.storage.local.remove(['github_auth_resolve', 'github_auth_tab_id']);
+                    reject(new Error(request.error));
                 }
-            } else {
-                reject(new Error('Request failed with status: ' + xhr.status));
-            }
-        };
-        
-        xhr.onerror = function() {
-            reject(new Error('Network error occurred'));
-        };
-        
-        const params = new URLSearchParams({
-            client_id: clientId,
-            scope: 'repo user:email'
+            };
+            
+            browser.runtime.onMessage.addListener(messageListener);
+            
+            // Execute the script
+            browser.scripting.executeScript({
+                target: { tabId: tab.id },
+                code: code
+            }).catch((error) => {
+                console.error('Failed to execute script:', error);
+                browser.tabs.remove(tab.id);
+                reject(new Error('Failed to execute OAuth script: ' + error.message));
+            });
+        }).catch((error) => {
+            console.error('Failed to create helper tab:', error);
+            reject(new Error('Failed to create helper tab: ' + error.message));
         });
-        xhr.send(params.toString());
     });
 }
 
