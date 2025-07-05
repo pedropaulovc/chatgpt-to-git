@@ -12,7 +12,7 @@ function authenticateGitHub() {
         
         // Since GitHub doesn't support CORS for device flow from extensions,
         // we'll use a simplified approach: direct user to GitHub OAuth
-        const authUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&scope=repo%20user:email&redirect_uri=urn:ietf:wg:oauth:2.0:oob`;
+        const authUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&scope=repo%20user:email&redirect_uri=https://chatgpt-to-git.github.io/oauth/callback`;
         
         // Open GitHub OAuth in new tab
         browser.tabs.create({
@@ -44,7 +44,7 @@ function exchangeCodeForToken(code) {
             body: new URLSearchParams({
                 client_id: clientId,
                 code: code,
-                redirect_uri: 'urn:ietf:wg:oauth:2.0:oob'
+                redirect_uri: 'https://chatgpt-to-git.github.io/oauth/callback'
             })
         })
         .then(response => response.json())
