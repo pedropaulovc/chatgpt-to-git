@@ -54,6 +54,13 @@ Since this is a pure web extension without a build system, development involves:
 
 3. **Debugging**: Browser console logging is extensively implemented throughout all components
 
+4. **Version Control**: Always commit and push changes immediately after making modifications:
+   ```bash
+   git add .
+   git commit -m "Description of changes"
+   git push origin main
+   ```
+
 ## Key Implementation Details
 
 ### Storage Format
