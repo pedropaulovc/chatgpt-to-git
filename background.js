@@ -17,51 +17,6 @@ function authenticateGitHub() {
         }).then((tab) => {
             console.log('Created helper tab:', tab.id);
             
-            // Inject script to perform OAuth request
-            const code = `
-                (function() {
-                    const xhr = new XMLHttpRequest();
-                    xhr.open('POST', 'https://github.com/login/device/code', true);
-                    xhr.setRequestHeader('Accept', 'application/json');
-                    xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
-                    
-                    xhr.onload = function() {
-                        if (xhr.status === 200) {
-                            try {
-                                const data = JSON.parse(xhr.responseText);
-                                browser.runtime.sendMessage({
-                                    action: 'deviceCodeResponse',
-                                    data: data
-                                });
-                            } catch (e) {
-                                browser.runtime.sendMessage({
-                                    action: 'deviceCodeError',
-                                    error: 'Failed to parse response: ' + e.message
-                                });
-                            }
-                        } else {
-                            browser.runtime.sendMessage({
-                                action: 'deviceCodeError',
-                                error: 'Request failed with status: ' + xhr.status
-                            });
-                        }
-                    };
-                    
-                    xhr.onerror = function() {
-                        browser.runtime.sendMessage({
-                            action: 'deviceCodeError',
-                            error: 'Network error occurred'
-                        });
-                    };
-                    
-                    const params = new URLSearchParams({
-                        client_id: '${clientId}',
-                        scope: 'repo user:email'
-                    });
-                    xhr.send(params.toString());
-                })();
-            `;
-            
             // Store the resolve/reject for this auth attempt
             browser.storage.local.set({
                 github_auth_resolve: true,
@@ -85,10 +40,20 @@ function authenticateGitHub() {
             
             browser.runtime.onMessage.addListener(messageListener);
             
-            // Execute the script
+            // Execute the script - use func for Firefox compatibility
             browser.scripting.executeScript({
                 target: { tabId: tab.id },
-                code: code
+                func: function(clientId) {
+                    if (typeof performOAuthRequest === 'function') {
+                        performOAuthRequest(clientId);
+                    } else {
+                        browser.runtime.sendMessage({
+                            action: 'deviceCodeError',
+                            error: 'performOAuthRequest function not found'
+                        });
+                    }
+                },
+                args: [clientId]
             }).catch((error) => {
                 console.error('Failed to execute script:', error);
                 browser.tabs.remove(tab.id);

@@ -32,7 +32,7 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["popup.html", "oauth-helper.html"],
+      "resources": ["popup.html", "oauth-helper.html", "oauth-helper.js"],
       "matches": ["https://chatgpt.com/*", "https://chat.openai.com/*"]
     }
   ]
