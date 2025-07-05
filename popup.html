@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        body {
+            width: 300px;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .button {
+            width: 100%;
+            padding: 10px;
+            margin: 5px 0;
+            border: none;
+            border-radius: 5px;
+            background-color: #10a37f;
+            color: white;
+            cursor: pointer;
+        }
+        .button:hover {
+            background-color: #0d8c6a;
+        }
+        .status {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 5px;
+            background-color: #f0f0f0;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h3>ChatGPT Extension</h3>
+    </div>
+    <button class="button" id="connect">Connect to ChatGPT</button>
+    <button class="button" id="extract">Extract Conversation</button>
+    <button class="button" id="github-auth">Connect to GitHub</button>
+    <div class="status" id="status">Ready</div>
+    <div class="status" id="github-status">GitHub: Not connected</div>
+    <script src="popup.js"></script>
+</body>
+</html>
