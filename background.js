@@ -5,65 +5,108 @@ browser.runtime.onInstalled.addListener(() => {
     console.log('ChatGPT Extension installed');
 });
 
-// GitHub OAuth functions using manual device flow
+// GitHub OAuth functions using Device Authorization Grant
 function authenticateGitHub() {
     return new Promise((resolve, reject) => {
-        const clientId = 'Iv23liAQIEL6RRJ2PuK0'; // Replace with actual client ID from GitHub OAuth app
+        const clientId = 'Iv23liAQIEL6RRJ2PuK0';
         
-        // Since GitHub doesn't support CORS for device flow from extensions,
-        // we'll use a simplified approach: direct user to GitHub OAuth
-        const authUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&scope=repo%20user:email&redirect_uri=https://chatgpt-to-git.github.io/oauth/callback`;
-        
-        // Open GitHub OAuth in new tab
-        browser.tabs.create({
-            url: authUrl,
-            active: true
-        });
-        
-        // Show instructions to user
-        browser.storage.local.set({
-            github_auth_pending: true,
-            github_auth_instructions: 'Please authorize the app and copy the authorization code'
-        });
-        
-        // For now, we'll reject and let the user manually enter the code
-        reject(new Error('Please complete authorization on GitHub and enter the code manually'));
-    });
-}
-
-function exchangeCodeForToken(code) {
-    return new Promise((resolve, reject) => {
-        const clientId = 'Iv23liAQIEL6RRJ2PuK0'; // Replace with actual client ID
-        
-        // Use GitHub's token exchange endpoint
-        fetch('https://github.com/login/oauth/access_token', {
+        // Step 1: Request device and user codes
+        fetch('https://github.com/login/device/code', {
             method: 'POST',
             headers: {
                 'Accept': 'application/json',
+                'Content-Type': 'application/x-www-form-urlencoded'
             },
             body: new URLSearchParams({
                 client_id: clientId,
-                code: code,
-                redirect_uri: 'https://chatgpt-to-git.github.io/oauth/callback'
+                scope: 'repo user:email'
             })
         })
         .then(response => response.json())
         .then(data => {
-            if (data.access_token) {
-                // Store token securely
+            if (data.device_code) {
+                // Store device code and start polling
                 browser.storage.local.set({
-                    github_token: data.access_token
-                }, () => {
-                    // Clean up auth pending state
-                    browser.storage.local.remove(['github_auth_pending', 'github_auth_instructions']);
-                    resolve(data.access_token);
+                    github_auth_pending: true,
+                    github_auth_instructions: `Please visit ${data.verification_uri} and enter code: ${data.user_code}`,
+                    github_device_code: data.device_code,
+                    github_verification_uri: data.verification_uri,
+                    github_user_code: data.user_code
                 });
+                
+                // Open verification URL
+                browser.tabs.create({
+                    url: data.verification_uri,
+                    active: true
+                });
+                
+                // Start polling for token
+                pollForToken(clientId, data.device_code, data.interval || 5, resolve, reject);
             } else {
-                reject(new Error(data.error_description || 'Failed to exchange code for token'));
+                reject(new Error(data.error_description || 'Failed to get device code'));
             }
         })
         .catch(reject);
     });
+}
+
+function pollForToken(clientId, deviceCode, interval, resolve, reject, attempts = 0) {
+    // Maximum attempts to prevent infinite polling
+    if (attempts > 120) { // 10 minutes max
+        reject(new Error('Authentication timeout'));
+        return;
+    }
+    
+    fetch('https://github.com/login/oauth/access_token', {
+        method: 'POST',
+        headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        body: new URLSearchParams({
+            client_id: clientId,
+            device_code: deviceCode,
+            grant_type: 'urn:ietf:params:oauth:grant-type:device_code'
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.access_token) {
+            // Success! Store token and clean up
+            browser.storage.local.set({
+                github_token: data.access_token
+            }, () => {
+                browser.storage.local.remove([
+                    'github_auth_pending', 
+                    'github_auth_instructions',
+                    'github_device_code',
+                    'github_verification_uri',
+                    'github_user_code'
+                ]);
+                resolve(data.access_token);
+            });
+        } else if (data.error === 'authorization_pending') {
+            // User hasn't authorized yet, continue polling
+            setTimeout(() => {
+                pollForToken(clientId, deviceCode, interval, resolve, reject, attempts + 1);
+            }, interval * 1000);
+        } else if (data.error === 'slow_down') {
+            // GitHub requests slower polling
+            setTimeout(() => {
+                pollForToken(clientId, deviceCode, interval + 5, resolve, reject, attempts + 1);
+            }, (interval + 5) * 1000);
+        } else {
+            // Error occurred
+            reject(new Error(data.error_description || data.error || 'Authentication failed'));
+        }
+    })
+    .catch(reject);
+}
+
+// Legacy function - no longer needed with device flow
+// Kept for backward compatibility if needed
+function exchangeCodeForToken(code) {
+    return Promise.reject(new Error('Manual code exchange not supported with device flow'));
 }
 
 function getGitHubToken() {
@@ -156,15 +199,8 @@ browser.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
     
     if (request.action === 'exchangeCodeForToken') {
-        console.log('Exchanging code for token');
-        exchangeCodeForToken(request.code)
-            .then(token => {
-                sendResponse({success: true, token});
-            })
-            .catch(error => {
-                console.error('Code exchange failed:', error);
-                sendResponse({success: false, error: error.message});
-            });
+        console.log('Code exchange not supported with device flow');
+        sendResponse({success: false, error: 'Manual code exchange not supported with device flow'});
         return true;
     }
     
