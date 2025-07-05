@@ -10,58 +10,73 @@ function authenticateGitHub() {
     return new Promise((resolve, reject) => {
         const clientId = 'Iv23liAQIEL6RRJ2PuK0';
         
-        // Step 1: Request device and user codes
-        fetch('https://github.com/login/device/code', {
-            method: 'POST',
-            headers: {
-                'Accept': 'application/json',
-                'Content-Type': 'application/x-www-form-urlencoded'
-            },
-            body: new URLSearchParams({
-                client_id: clientId,
-                scope: 'repo user:email'
-            })
-        })
-        .then(response => response.json())
-        .then(data => {
-            console.log('Device code response:', data);
-            if (data.device_code) {
-                // Store device code and start polling
-                browser.storage.local.set({
-                    github_auth_pending: true,
-                    github_auth_instructions: `Please visit ${data.verification_uri} and enter code: ${data.user_code}`,
-                    github_device_code: data.device_code,
-                    github_verification_uri: data.verification_uri,
-                    github_user_code: data.user_code
-                });
-                
-                // Open verification URL
-                console.log('Opening verification URL:', data.verification_uri);
-                console.log('Browser object:', browser);
-                console.log('Browser tabs:', browser.tabs);
-                
-                // Try creating tab
-                if (browser.tabs && browser.tabs.create) {
-                    browser.tabs.create({
-                        url: data.verification_uri,
-                        active: true
-                    }).then((tab) => {
-                        console.log('Tab created successfully:', tab.id);
-                    }).catch((error) => {
-                        console.error('Failed to create tab:', error);
-                    });
-                } else {
-                    console.error('browser.tabs.create not available');
+        // Step 1: Request device and user codes using XMLHttpRequest for Firefox compatibility
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', 'https://github.com/login/device/code', true);
+        xhr.setRequestHeader('Accept', 'application/json');
+        xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+        
+        xhr.onload = function() {
+            if (xhr.status === 200) {
+                try {
+                    const data = JSON.parse(xhr.responseText);
+                    handleDeviceCodeResponse(data, clientId, resolve, reject);
+                } catch (e) {
+                    reject(new Error('Failed to parse response: ' + e.message));
                 }
-                
-                // Start polling for token
-                pollForToken(clientId, data.device_code, data.interval || 5, resolve, reject);
             } else {
-                reject(new Error(data.error_description || 'Failed to get device code'));
+                reject(new Error('Request failed with status: ' + xhr.status));
             }
-        })
-        .catch(reject);
+        };
+        
+        xhr.onerror = function() {
+            reject(new Error('Network error occurred'));
+        };
+        
+        const params = new URLSearchParams({
+            client_id: clientId,
+            scope: 'repo user:email'
+        });
+        xhr.send(params.toString());
     });
+}
+
+function handleDeviceCodeResponse(data, clientId, resolve, reject) {
+    console.log('Device code response:', data);
+    if (data.device_code) {
+        // Store device code and start polling
+        browser.storage.local.set({
+            github_auth_pending: true,
+            github_auth_instructions: `Please visit ${data.verification_uri} and enter code: ${data.user_code}`,
+            github_device_code: data.device_code,
+            github_verification_uri: data.verification_uri,
+            github_user_code: data.user_code
+        });
+        
+        // Open verification URL
+        console.log('Opening verification URL:', data.verification_uri);
+        console.log('Browser object:', browser);
+        console.log('Browser tabs:', browser.tabs);
+        
+        // Try creating tab
+        if (browser.tabs && browser.tabs.create) {
+            browser.tabs.create({
+                url: data.verification_uri,
+                active: true
+            }).then((tab) => {
+                console.log('Tab created successfully:', tab.id);
+            }).catch((error) => {
+                console.error('Failed to create tab:', error);
+            });
+        } else {
+            console.error('browser.tabs.create not available');
+        }
+        
+        // Start polling for token
+        pollForToken(clientId, data.device_code, data.interval || 5, resolve, reject);
+    } else {
+        reject(new Error(data.error_description || 'Failed to get device code'));
+    }
 }
 
 function pollForToken(clientId, deviceCode, interval, resolve, reject, attempts = 0) {
@@ -71,50 +86,61 @@ function pollForToken(clientId, deviceCode, interval, resolve, reject, attempts 
         return;
     }
     
-    fetch('https://github.com/login/oauth/access_token', {
-        method: 'POST',
-        headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/x-www-form-urlencoded'
-        },
-        body: new URLSearchParams({
-            client_id: clientId,
-            device_code: deviceCode,
-            grant_type: 'urn:ietf:params:oauth:grant-type:device_code'
-        })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.access_token) {
-            // Success! Store token and clean up
-            browser.storage.local.set({
-                github_token: data.access_token
-            }, () => {
-                browser.storage.local.remove([
-                    'github_auth_pending', 
-                    'github_auth_instructions',
-                    'github_device_code',
-                    'github_verification_uri',
-                    'github_user_code'
-                ]);
-                resolve(data.access_token);
-            });
-        } else if (data.error === 'authorization_pending') {
-            // User hasn't authorized yet, continue polling
-            setTimeout(() => {
-                pollForToken(clientId, deviceCode, interval, resolve, reject, attempts + 1);
-            }, interval * 1000);
-        } else if (data.error === 'slow_down') {
-            // GitHub requests slower polling
-            setTimeout(() => {
-                pollForToken(clientId, deviceCode, interval + 5, resolve, reject, attempts + 1);
-            }, (interval + 5) * 1000);
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', 'https://github.com/login/oauth/access_token', true);
+    xhr.setRequestHeader('Accept', 'application/json');
+    xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+    
+    xhr.onload = function() {
+        if (xhr.status === 200) {
+            try {
+                const data = JSON.parse(xhr.responseText);
+                if (data.access_token) {
+                    // Success! Store token and clean up
+                    browser.storage.local.set({
+                        github_token: data.access_token
+                    }, () => {
+                        browser.storage.local.remove([
+                            'github_auth_pending', 
+                            'github_auth_instructions',
+                            'github_device_code',
+                            'github_verification_uri',
+                            'github_user_code'
+                        ]);
+                        resolve(data.access_token);
+                    });
+                } else if (data.error === 'authorization_pending') {
+                    // User hasn't authorized yet, continue polling
+                    setTimeout(() => {
+                        pollForToken(clientId, deviceCode, interval, resolve, reject, attempts + 1);
+                    }, interval * 1000);
+                } else if (data.error === 'slow_down') {
+                    // GitHub requests slower polling
+                    setTimeout(() => {
+                        pollForToken(clientId, deviceCode, interval + 5, resolve, reject, attempts + 1);
+                    }, (interval + 5) * 1000);
+                } else {
+                    // Error occurred
+                    reject(new Error(data.error_description || data.error || 'Authentication failed'));
+                }
+            } catch (e) {
+                reject(new Error('Failed to parse response: ' + e.message));
+            }
         } else {
-            // Error occurred
-            reject(new Error(data.error_description || data.error || 'Authentication failed'));
+            reject(new Error('Request failed with status: ' + xhr.status));
         }
-    })
-    .catch(reject);
+    };
+    
+    xhr.onerror = function() {
+        reject(new Error('Network error occurred'));
+    };
+    
+    const params = new URLSearchParams({
+        client_id: clientId,
+        device_code: deviceCode,
+        grant_type: 'urn:ietf:params:oauth:grant-type:device_code'
+    });
+    xhr.send(params.toString());
 }
 
 // Legacy function - no longer needed with device flow
