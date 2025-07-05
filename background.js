@@ -12,7 +12,7 @@ function authenticateGitHub() {
         
         // For Firefox, we'll use a temporary tab to bypass CORS
         browser.tabs.create({
-            url: 'data:text/html,<html><body><script>console.log("OAuth helper page loaded")</script></body></html>',
+            url: browser.runtime.getURL('oauth-helper.html'),
             active: false
         }).then((tab) => {
             console.log('Created helper tab:', tab.id);
