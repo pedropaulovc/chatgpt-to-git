@@ -75,3 +75,9 @@ Conversations are stored with timestamp-based keys: `conversation_${Date.now()}`
 ### Visual Indicators
 - Extension shows temporary "Extension Active" indicator on ChatGPT pages
 - Badge with checkmark (✓) appears when on ChatGPT pages
+
+## Commit Guidelines
+
+- Always include in git commit:
+  - 🤖 Generated with [Claude Code](https://claude.ai/code)
+  - Co-Authored-By: Claude <noreply@anthropic.com>
