@@ -6,6 +6,9 @@ document.addEventListener('DOMContentLoaded', function() {
     const githubAuthBtn = document.getElementById('github-auth');
     const status = document.getElementById('status');
     const githubStatus = document.getElementById('github-status');
+    const githubCodeInput = document.getElementById('github-code-input');
+    const githubCodeField = document.getElementById('github-code');
+    const submitCodeBtn = document.getElementById('submit-code');
 
     console.log('Popup elements found:', { connectBtn, extractBtn, githubAuthBtn, status, githubStatus });
 
@@ -81,40 +84,43 @@ document.addEventListener('DOMContentLoaded', function() {
                 githubStatus.style.backgroundColor = '#d4edda';
                 githubStatus.style.color = '#155724';
                 githubAuthBtn.textContent = 'Disconnect GitHub';
+                githubCodeInput.style.display = 'none';
             } else {
-                githubStatus.textContent = `GitHub: ${response.error || 'Authentication failed'}`;
+                githubStatus.textContent = 'GitHub: Authorize on GitHub tab, then enter code below';
+                githubStatus.style.backgroundColor = '#fff3cd';
+                githubStatus.style.color = '#856404';
+                githubCodeInput.style.display = 'block';
+            }
+        });
+    });
+    
+    submitCodeBtn.addEventListener('click', function() {
+        const code = githubCodeField.value.trim();
+        if (!code) {
+            alert('Please enter the authorization code');
+            return;
+        }
+        
+        githubStatus.textContent = 'GitHub: Exchanging code for token...';
+        githubStatus.style.backgroundColor = '#fff3cd';
+        githubStatus.style.color = '#856404';
+        
+        browser.runtime.sendMessage({action: 'exchangeCodeForToken', code: code}, function(response) {
+            console.log('Code exchange response:', response);
+            if (response.success) {
+                githubStatus.textContent = 'GitHub: Connected';
+                githubStatus.style.backgroundColor = '#d4edda';
+                githubStatus.style.color = '#155724';
+                githubAuthBtn.textContent = 'Disconnect GitHub';
+                githubCodeInput.style.display = 'none';
+                githubCodeField.value = '';
+            } else {
+                githubStatus.textContent = `GitHub: ${response.error || 'Code exchange failed'}`;
                 githubStatus.style.backgroundColor = '#f8d7da';
                 githubStatus.style.color = '#721c24';
             }
         });
-        
-        // Show device code if available
-        showDeviceCodeIfAvailable();
     });
-    
-    function showDeviceCodeIfAvailable() {
-        // Check for device code in storage
-        browser.storage.local.get(['github_user_code', 'github_verification_uri'], function(result) {
-            if (result.github_user_code) {
-                githubStatus.innerHTML = `
-                    <div style="margin-bottom: 8px;">GitHub: Waiting for authorization</div>
-                    <div style="font-size: 11px; word-break: break-all;">
-                        Code: <strong>${result.github_user_code}</strong>
-                    </div>
-                    <div style="font-size: 11px; margin-top: 4px;">
-                        Visit: <a href="${result.github_verification_uri}" target="_blank" style="color: #0366d6;">
-                            github.com/login/device
-                        </a>
-                    </div>
-                `;
-                githubStatus.style.backgroundColor = '#fff3cd';
-                githubStatus.style.color = '#856404';
-                
-                // Poll for updates
-                setTimeout(checkGitHubStatus, 2000);
-            }
-        });
-    }
 
     function checkGitHubStatus() {
         browser.runtime.sendMessage({action: 'getGitHubToken'}, function(response) {
