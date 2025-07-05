@@ -12,7 +12,8 @@
   "host_permissions": [
     "https://chatgpt.com/*",
     "https://chat.openai.com/*",
-    "https://api.github.com/*"
+    "https://api.github.com/*",
+    "https://github.com/*"
   ],
   "action": {
     "default_popup": "popup.html",
