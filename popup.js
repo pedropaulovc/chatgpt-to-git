@@ -60,7 +60,17 @@ document.addEventListener('DOMContentLoaded', function() {
 
     githubAuthBtn.addEventListener('click', function() {
         console.log('GitHub auth button clicked');
-        githubStatus.textContent = 'GitHub: Authenticating...';
+        
+        // Check if already connected
+        if (githubAuthBtn.textContent === 'Disconnect GitHub') {
+            // Disconnect GitHub
+            browser.runtime.sendMessage({action: 'clearGitHubToken'}, function(response) {
+                checkGitHubStatus();
+            });
+            return;
+        }
+        
+        githubStatus.textContent = 'GitHub: Starting authentication...';
         githubStatus.style.backgroundColor = '#fff3cd';
         githubStatus.style.color = '#856404';
         
@@ -72,12 +82,39 @@ document.addEventListener('DOMContentLoaded', function() {
                 githubStatus.style.color = '#155724';
                 githubAuthBtn.textContent = 'Disconnect GitHub';
             } else {
-                githubStatus.textContent = 'GitHub: Authentication failed';
+                githubStatus.textContent = `GitHub: ${response.error || 'Authentication failed'}`;
                 githubStatus.style.backgroundColor = '#f8d7da';
                 githubStatus.style.color = '#721c24';
             }
         });
+        
+        // Show device code if available
+        showDeviceCodeIfAvailable();
     });
+    
+    function showDeviceCodeIfAvailable() {
+        // Check for device code in storage
+        browser.storage.local.get(['github_user_code', 'github_verification_uri'], function(result) {
+            if (result.github_user_code) {
+                githubStatus.innerHTML = `
+                    <div style="margin-bottom: 8px;">GitHub: Waiting for authorization</div>
+                    <div style="font-size: 11px; word-break: break-all;">
+                        Code: <strong>${result.github_user_code}</strong>
+                    </div>
+                    <div style="font-size: 11px; margin-top: 4px;">
+                        Visit: <a href="${result.github_verification_uri}" target="_blank" style="color: #0366d6;">
+                            github.com/login/device
+                        </a>
+                    </div>
+                `;
+                githubStatus.style.backgroundColor = '#fff3cd';
+                githubStatus.style.color = '#856404';
+                
+                // Poll for updates
+                setTimeout(checkGitHubStatus, 2000);
+            }
+        });
+    }
 
     function checkGitHubStatus() {
         browser.runtime.sendMessage({action: 'getGitHubToken'}, function(response) {

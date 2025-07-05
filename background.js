@@ -5,55 +5,13 @@ browser.runtime.onInstalled.addListener(() => {
     console.log('ChatGPT Extension installed');
 });
 
-// GitHub OAuth functions
+// GitHub OAuth functions using Device Flow
 function authenticateGitHub() {
     return new Promise((resolve, reject) => {
-        // For Chrome extensions, we need to use launchWebAuthFlow
-        if (browser.identity) {
-            const redirectURL = browser.identity.getRedirectURL();
-            const clientId = 'YOUR_GITHUB_CLIENT_ID'; // Replace with actual client ID from GitHub OAuth app
-            const scopes = 'repo user:email';
-            
-            const authURL = `https://github.com/login/oauth/authorize?` +
-                `client_id=${clientId}&` +
-                `redirect_uri=${encodeURIComponent(redirectURL)}&` +
-                `scope=${encodeURIComponent(scopes)}&` +
-                `response_type=code`;
-            
-            browser.identity.launchWebAuthFlow({
-                url: authURL,
-                interactive: true
-            }, (responseUrl) => {
-                if (browser.runtime.lastError) {
-                    reject(new Error(browser.runtime.lastError.message));
-                    return;
-                }
-                
-                // Extract authorization code from response URL
-                const url = new URL(responseUrl);
-                const code = url.searchParams.get('code');
-                
-                if (code) {
-                    // Exchange code for access token
-                    exchangeCodeForToken(code).then(resolve).catch(reject);
-                } else {
-                    reject(new Error('No authorization code received'));
-                }
-            });
-        } else {
-            reject(new Error('Identity API not available'));
-        }
-    });
-}
-
-function exchangeCodeForToken(code) {
-    return new Promise((resolve, reject) => {
-        // Note: In a real implementation, this should be done server-side
-        // for security reasons. This is a simplified example.
-        const clientId = 'YOUR_GITHUB_CLIENT_ID';
-        const clientSecret = 'YOUR_GITHUB_CLIENT_SECRET';
+        const clientId = 'YOUR_GITHUB_CLIENT_ID'; // Replace with actual client ID from GitHub OAuth app
         
-        fetch('https://github.com/login/oauth/access_token', {
+        // Step 1: Request device and user codes
+        fetch('https://github.com/login/device/code', {
             method: 'POST',
             headers: {
                 'Accept': 'application/json',
@@ -61,24 +19,85 @@ function exchangeCodeForToken(code) {
             },
             body: JSON.stringify({
                 client_id: clientId,
-                client_secret: clientSecret,
-                code: code
+                scope: 'repo user:email'
             })
         })
         .then(response => response.json())
         .then(data => {
-            if (data.access_token) {
-                // Store token securely
-                browser.storage.local.set({
-                    github_token: data.access_token
-                }, () => {
-                    resolve(data.access_token);
-                });
+            if (data.device_code) {
+                // Step 2: Show user the verification URL and code
+                showDeviceCodeDialog(data.verification_uri, data.user_code);
+                
+                // Step 3: Poll for authorization
+                pollForAuthorization(clientId, data.device_code, data.interval || 5)
+                    .then(resolve)
+                    .catch(reject);
             } else {
-                reject(new Error('Failed to get access token'));
+                reject(new Error('Failed to get device code'));
             }
         })
         .catch(reject);
+    });
+}
+
+function showDeviceCodeDialog(verificationUri, userCode) {
+    // Create a new tab with the verification URL
+    browser.tabs.create({
+        url: verificationUri,
+        active: true
+    });
+    
+    // Store the user code for the popup to display
+    browser.storage.local.set({
+        github_user_code: userCode,
+        github_verification_uri: verificationUri
+    });
+}
+
+function pollForAuthorization(clientId, deviceCode, interval) {
+    return new Promise((resolve, reject) => {
+        const poll = () => {
+            fetch('https://github.com/login/oauth/access_token', {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    client_id: clientId,
+                    device_code: deviceCode,
+                    grant_type: 'urn:ietf:params:oauth:grant-type:device_code'
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.access_token) {
+                    // Store token securely
+                    browser.storage.local.set({
+                        github_token: data.access_token
+                    }, () => {
+                        // Clean up device code data
+                        browser.storage.local.remove(['github_user_code', 'github_verification_uri']);
+                        resolve(data.access_token);
+                    });
+                } else if (data.error === 'authorization_pending') {
+                    // Continue polling
+                    setTimeout(poll, interval * 1000);
+                } else if (data.error === 'slow_down') {
+                    // Increase polling interval
+                    setTimeout(poll, (interval + 5) * 1000);
+                } else if (data.error === 'expired_token') {
+                    reject(new Error('Device code expired. Please try again.'));
+                } else if (data.error === 'access_denied') {
+                    reject(new Error('Access denied by user.'));
+                } else {
+                    reject(new Error(data.error_description || 'Unknown error'));
+                }
+            })
+            .catch(reject);
+        };
+        
+        poll();
     });
 }
 
