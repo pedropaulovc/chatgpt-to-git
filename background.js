@@ -24,6 +24,7 @@ function authenticateGitHub() {
         })
         .then(response => response.json())
         .then(data => {
+            console.log('Device code response:', data);
             if (data.device_code) {
                 // Store device code and start polling
                 browser.storage.local.set({
@@ -35,10 +36,23 @@ function authenticateGitHub() {
                 });
                 
                 // Open verification URL
-                browser.tabs.create({
-                    url: data.verification_uri,
-                    active: true
-                });
+                console.log('Opening verification URL:', data.verification_uri);
+                console.log('Browser object:', browser);
+                console.log('Browser tabs:', browser.tabs);
+                
+                // Try creating tab
+                if (browser.tabs && browser.tabs.create) {
+                    browser.tabs.create({
+                        url: data.verification_uri,
+                        active: true
+                    }).then((tab) => {
+                        console.log('Tab created successfully:', tab.id);
+                    }).catch((error) => {
+                        console.error('Failed to create tab:', error);
+                    });
+                } else {
+                    console.error('browser.tabs.create not available');
+                }
                 
                 // Start polling for token
                 pollForToken(clientId, data.device_code, data.interval || 5, resolve, reject);
