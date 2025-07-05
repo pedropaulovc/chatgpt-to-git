@@ -8,7 +8,7 @@ browser.runtime.onInstalled.addListener(() => {
 // GitHub OAuth functions using manual device flow
 function authenticateGitHub() {
     return new Promise((resolve, reject) => {
-        const clientId = 'YOUR_GITHUB_CLIENT_ID'; // Replace with actual client ID from GitHub OAuth app
+        const clientId = 'Iv23liAQIEL6RRJ2PuK0'; // Replace with actual client ID from GitHub OAuth app
         
         // Since GitHub doesn't support CORS for device flow from extensions,
         // we'll use a simplified approach: direct user to GitHub OAuth
@@ -33,7 +33,7 @@ function authenticateGitHub() {
 
 function exchangeCodeForToken(code) {
     return new Promise((resolve, reject) => {
-        const clientId = 'YOUR_GITHUB_CLIENT_ID'; // Replace with actual client ID
+        const clientId = 'Iv23liAQIEL6RRJ2PuK0'; // Replace with actual client ID
         
         // Use GitHub's token exchange endpoint
         fetch('https://github.com/login/oauth/access_token', {
