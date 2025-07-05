@@ -5,64 +5,75 @@ browser.runtime.onInstalled.addListener(() => {
     console.log('ChatGPT Extension installed');
 });
 
-// GitHub OAuth functions using Device Authorization Grant
+// GitHub OAuth functions - fallback to manual token entry for Firefox
 function authenticateGitHub() {
     return new Promise((resolve, reject) => {
-        const clientId = 'Iv23liAQIEL6RRJ2PuK0';
+        // Since Firefox has CORS issues, we'll provide a manual token entry option
+        const githubTokenUrl = 'https://github.com/settings/tokens/new?scopes=repo,user:email&description=ChatGPT%20Extension';
         
-        // For Firefox, we'll use a temporary tab to bypass CORS
-        browser.tabs.create({
-            url: browser.runtime.getURL('oauth-helper.html'),
-            active: false
-        }).then((tab) => {
-            console.log('Created helper tab:', tab.id);
-            
-            // Store the resolve/reject for this auth attempt
-            browser.storage.local.set({
-                github_auth_resolve: true,
-                github_auth_tab_id: tab.id
-            });
-            
-            // Set up temporary listener for response
-            const messageListener = (request, sender, sendResponse) => {
-                if (request.action === 'deviceCodeResponse') {
-                    browser.runtime.onMessage.removeListener(messageListener);
-                    browser.tabs.remove(tab.id);
-                    browser.storage.local.remove(['github_auth_resolve', 'github_auth_tab_id']);
-                    handleDeviceCodeResponse(request.data, clientId, resolve, reject);
-                } else if (request.action === 'deviceCodeError') {
-                    browser.runtime.onMessage.removeListener(messageListener);
-                    browser.tabs.remove(tab.id);
-                    browser.storage.local.remove(['github_auth_resolve', 'github_auth_tab_id']);
-                    reject(new Error(request.error));
-                }
-            };
-            
-            browser.runtime.onMessage.addListener(messageListener);
-            
-            // Execute the script - use func for Firefox compatibility
-            browser.scripting.executeScript({
-                target: { tabId: tab.id },
-                func: function(clientId) {
-                    if (typeof performOAuthRequest === 'function') {
-                        performOAuthRequest(clientId);
-                    } else {
-                        browser.runtime.sendMessage({
-                            action: 'deviceCodeError',
-                            error: 'performOAuthRequest function not found'
-                        });
-                    }
-                },
-                args: [clientId]
-            }).catch((error) => {
-                console.error('Failed to execute script:', error);
-                browser.tabs.remove(tab.id);
-                reject(new Error('Failed to execute OAuth script: ' + error.message));
-            });
-        }).catch((error) => {
-            console.error('Failed to create helper tab:', error);
-            reject(new Error('Failed to create helper tab: ' + error.message));
+        // Store auth state
+        browser.storage.local.set({
+            github_auth_pending: true,
+            github_auth_instructions: 'Please create a Personal Access Token at GitHub and enter it in the extension popup.'
         });
+        
+        // Open GitHub token creation page
+        browser.tabs.create({
+            url: githubTokenUrl,
+            active: true
+        }).then((tab) => {
+            console.log('Opened GitHub token creation page');
+            
+            // Reject with instructions for manual token entry
+            reject(new Error('Please create a Personal Access Token at GitHub and enter it in the extension popup.'));
+        }).catch((error) => {
+            console.error('Failed to open GitHub token page:', error);
+            reject(new Error('Failed to open GitHub token page: ' + error.message));
+        });
+    });
+}
+
+// Function to manually set GitHub token
+function setGitHubToken(token) {
+    return new Promise((resolve, reject) => {
+        if (!token || token.trim() === '') {
+            reject(new Error('Token cannot be empty'));
+            return;
+        }
+        
+        // Validate token by making a test API call
+        const xhr = new XMLHttpRequest();
+        xhr.open('GET', 'https://api.github.com/user', true);
+        xhr.setRequestHeader('Authorization', `token ${token.trim()}`);
+        xhr.setRequestHeader('Accept', 'application/vnd.github.v3+json');
+        
+        xhr.onload = function() {
+            if (xhr.status === 200) {
+                try {
+                    const userData = JSON.parse(xhr.responseText);
+                    // Token is valid, store it
+                    browser.storage.local.set({
+                        github_token: token.trim()
+                    }, () => {
+                        browser.storage.local.remove(['github_auth_pending', 'github_auth_instructions']);
+                        resolve({
+                            token: token.trim(),
+                            user: userData
+                        });
+                    });
+                } catch (e) {
+                    reject(new Error('Failed to parse user data: ' + e.message));
+                }
+            } else {
+                reject(new Error('Invalid token or API error. Status: ' + xhr.status));
+            }
+        };
+        
+        xhr.onerror = function() {
+            reject(new Error('Network error while validating token'));
+        };
+        
+        xhr.send();
     });
 }
 
@@ -266,6 +277,19 @@ browser.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === 'exchangeCodeForToken') {
         console.log('Code exchange not supported with device flow');
         sendResponse({success: false, error: 'Manual code exchange not supported with device flow'});
+        return true;
+    }
+    
+    if (request.action === 'setGitHubToken') {
+        console.log('Setting GitHub token manually');
+        setGitHubToken(request.token)
+            .then(result => {
+                sendResponse({success: true, result});
+            })
+            .catch(error => {
+                console.error('Token validation failed:', error);
+                sendResponse({success: false, error: error.message});
+            });
         return true;
     }
     

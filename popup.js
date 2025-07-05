@@ -9,6 +9,9 @@ document.addEventListener('DOMContentLoaded', function() {
     const githubCodeInput = document.getElementById('github-code-input');
     const githubCodeField = document.getElementById('github-code');
     const submitCodeBtn = document.getElementById('submit-code');
+    const githubTokenInput = document.getElementById('github-token-input');
+    const githubTokenField = document.getElementById('github-token');
+    const submitTokenBtn = document.getElementById('submit-token');
 
     console.log('Popup elements found:', { connectBtn, extractBtn, githubAuthBtn, status, githubStatus });
 
@@ -85,10 +88,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 githubStatus.style.color = '#155724';
                 githubAuthBtn.textContent = 'Disconnect GitHub';
                 githubCodeInput.style.display = 'none';
+                githubTokenInput.style.display = 'none';
             } else {
-                githubStatus.textContent = 'GitHub: Authorize on GitHub tab, then enter code below';
+                githubStatus.textContent = 'GitHub: Create token and enter below, or use OAuth code';
                 githubStatus.style.backgroundColor = '#fff3cd';
                 githubStatus.style.color = '#856404';
+                githubTokenInput.style.display = 'block';
                 githubCodeInput.style.display = 'block';
             }
         });
@@ -113,9 +118,39 @@ document.addEventListener('DOMContentLoaded', function() {
                 githubStatus.style.color = '#155724';
                 githubAuthBtn.textContent = 'Disconnect GitHub';
                 githubCodeInput.style.display = 'none';
+                githubTokenInput.style.display = 'none';
                 githubCodeField.value = '';
             } else {
                 githubStatus.textContent = `GitHub: ${response.error || 'Code exchange failed'}`;
+                githubStatus.style.backgroundColor = '#f8d7da';
+                githubStatus.style.color = '#721c24';
+            }
+        });
+    });
+    
+    submitTokenBtn.addEventListener('click', function() {
+        const token = githubTokenField.value.trim();
+        if (!token) {
+            alert('Please enter your GitHub Personal Access Token');
+            return;
+        }
+        
+        githubStatus.textContent = 'GitHub: Validating token...';
+        githubStatus.style.backgroundColor = '#fff3cd';
+        githubStatus.style.color = '#856404';
+        
+        browser.runtime.sendMessage({action: 'setGitHubToken', token: token}, function(response) {
+            console.log('Token validation response:', response);
+            if (response.success) {
+                githubStatus.textContent = `GitHub: Connected as ${response.result.user.login}`;
+                githubStatus.style.backgroundColor = '#d4edda';
+                githubStatus.style.color = '#155724';
+                githubAuthBtn.textContent = 'Disconnect GitHub';
+                githubTokenInput.style.display = 'none';
+                githubCodeInput.style.display = 'none';
+                githubTokenField.value = '';
+            } else {
+                githubStatus.textContent = `GitHub: ${response.error || 'Token validation failed'}`;
                 githubStatus.style.backgroundColor = '#f8d7da';
                 githubStatus.style.color = '#721c24';
             }

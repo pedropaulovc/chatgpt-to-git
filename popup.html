@@ -47,6 +47,13 @@
         <input type="text" id="github-code" placeholder="Enter GitHub authorization code" style="width: 100%; padding: 8px; margin: 5px 0; border: 1px solid #ccc; border-radius: 3px;">
         <button class="button" id="submit-code">Submit Code</button>
     </div>
+    <div id="github-token-input" style="display: none;">
+        <input type="password" id="github-token" placeholder="Enter GitHub Personal Access Token" style="width: 100%; padding: 8px; margin: 5px 0; border: 1px solid #ccc; border-radius: 3px;">
+        <button class="button" id="submit-token">Submit Token</button>
+        <div style="font-size: 11px; color: #666; margin-top: 5px;">
+            Create a token at: <a href="https://github.com/settings/tokens/new" target="_blank">GitHub Settings</a>
+        </div>
+    </div>
     <script src="popup.js"></script>
 </body>
 </html>
